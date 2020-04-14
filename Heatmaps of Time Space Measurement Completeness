@@ -1,0 +1,249 @@
+################################################################################
+### World Ozone and Ultraviolet Radiation Data Centre (WOUDC)
+### Heatmaps of Time Space Measurement Completeness 
+###  Created by Dr. Souleymane SY  CNR-IMAA, Potenza, IT - Contact: souleymane.sy@imaa.cnr.it
+###  April--2020 under C3S-512 
+### see https://woudc.org/data/stations/?lang=en  for more information on WOUDC datasets
+###################################################################################
+
+###########################################################
+### 1) Installing and loading all required packages
+###########################################################
+if (!require("ncdf4")) {
+   install.packages("ncdf4", dependencies = TRUE)
+   library(ncdf4)
+   }
+if (!require("fields")) {
+   install.packages("fields", dependencies = TRUE)
+   library(fields)
+   }
+if (!require("lubridate")) {
+   install.packages("lubridate", dependencies = TRUE)
+   library(lubridate)
+   }
+if (!require("gplots")) { 
+   install.packages("gplots", dependencies = TRUE)
+   library(gplots)
+   }
+if (!require("RColorBrewer")) {
+   install.packages("RColorBrewer", dependencies = TRUE)
+   library(RColorBrewer)
+   }
+if (!require("plotrix")) {
+    install.packages("plotrix", dependencies = TRUE)
+    library(plotrix)
+}
+if (!require("devtools")) {
+    install.packages("devtools", dependencies = TRUE)
+    library(devtools)
+}
+##############################################################################
+### 2) Reading data from "woudc_totalozone_header.csv " file and transforms it into matrix 
+#############################################################################
+
+report_dir<-"/Users/souleymane.sy/copernicus_512/Woudc/"
+
+WOUDC_Data <- read.csv2(file = paste0(report_dir,"woudc_totalozone_header.csv"),sep=",",h=T)
+
+WOUDC_Data <- as.matrix(WOUDC_Data)
+
+##############################################################################
+### 3) Extract  Data, Time, Station Identification Number from the matrix
+###############################################################################
+
+O3_Time <- WOUDC_Data[,23]   # Assign O3_Time  to column 23
+
+O3_Data <- WOUDC_Data[,24]   # Assign O3_Data  to column 24
+ 
+WOUDC_Station_ID <- WOUDC_Data[,11]   # Assign WOUDC_Station_ID to column 11
+
+Latitude <- WOUDC_Data[,18]
+
+Longitude  <- WOUDC_Data[,19] 
+
+##############################################################################
+### 4)  List of stations, Date of measurement and  Number of years
+### Here put your stations ID name example: ListStation=c("STATION-1","STATION-2","STATION-3",...,"STATION-N")
+### List of all STATION ID Numbers as define in https://woudc.org/data/stations/?lang=en
+##############################################################################
+
+
+ListStation=seq(from=1, to=516,by=1)
+
+# Define a vector of dates corresponding to the different measurement dates
+
+Date<- as.character(format(seq(from=as.Date("1958-01-01"), to=as.Date("2019-12-31"),
+                 by = "month"),"%Y-%m-%d"))
+
+# Number of years
+nyears=62
+
+##########################################################################################################
+### 5) This step concist to arrange the station by latitude order i.e. from 90S to 90N (it is optional)
+###########################################################################################################
+Lon=NULL
+Lat=NULL
+
+for (i in 1:length(O3_Time)){
+    
+        for (stat in 1:length(ListStation)){
+
+              if (!any(is.na(WOUDC_Station_ID[i])) && ListStation[stat]==as.numeric(WOUDC_Station_ID[i])){
+ 
+                             Lat[stat]=as.numeric(Latitude[i])
+
+                             Lon[stat]=as.numeric(Longitude[i])
+
+                            print(paste("StationID= ",ListStation[stat]," Lat= ",Lat[stat],sep=""))
+
+              }
+        
+      }
+    
+}
+
+# Define new stations list arranged by order of latitude from -90 to +90 
+ListStation_by_latitude_Order=order(Lat,na.last =NA)
+
+##########################################################################################################
+### 6) Reading all Ozone Data and transform them into a "Ozone_Array" of to 2 dimensions (station and time)
+###########################################################################################################
+
+Ozone_Array <- array(NA,dim=c(length(ListStation_by_latitude_Order),nyears*12))
+        
+       for (i in 1:length(O3_Time)){
+
+                  for (date in 1: length(Date)){
+
+                        for (stat in 1:length(ListStation_by_latitude_Order)){
+
+                             if(ListStation_by_latitude_Order[stat]==as.numeric(WOUDC_Station_ID[i]) && O3_Time[i]==Date[date]){
+                         
+                             Ozone_Array[stat,date] <- as.numeric(O3_Data[i])
+
+                             print(paste("Year-Month== ",Date[date]," StationID= ",ListStation_by_latitude_Order[stat],sep=""))
+                              
+                   }
+                     
+           }
+        
+      }
+    
+}
+
+
+# Initialisation 
+
+Ozone_matrix=array(NA,dim=c(length(ListStation_by_latitude_Order),nyears,12))
+Ozone_matrix_One=array(NA,dim=c(length(ListStation_by_latitude_Order),nyears,12))
+Ozone_matrix_Sum=array(NA,dim=c(length(ListStation_by_latitude_Order),nyears))
+
+#############################################################################################
+### 7) Reshape  "Ozone_Array" Data in to a matrix of 3 dimensions (Stations, Years, Month) 
+#############################################################################################
+
+for (stat  in 1:length(ListStation_by_latitude_Order)){
+
+    Ozone_matrix[stat,,]=t(matrix(Ozone_Array[stat,],ncol=nyears,nrow=12))
+
+}
+
+#################################################################################################
+### 8) 1- Creating a matrix of 1 or NA values (i.e when data exist, put 1 otherwise put NA values)
+###    2- Creating a matrix of a sum of all existing monthly values variant from 0 to 12
+##################################################################################################
+
+for  (stat in 1:length(ListStation_by_latitude_Order)){
+    
+    for  (year in 1:nyears){
+        
+        for  (month in 1:12){
+            
+            if (!any(is.na(Ozone_matrix[stat,year,month]))){
+                
+                Ozone_matrix_One[stat,year,month]<-abs(Ozone_matrix[stat,year,month])/
+                       abs(Ozone_matrix[stat,year,month])
+                
+              } 
+          
+         }
+        
+             Ozone_matrix_Sum[stat,year]<-sum(Ozone_matrix_One[stat,year,],na.rm=TRUE) 
+    }
+    
+}
+
+#################################################################################################
+### 9) Define colors and array for x and y labels (indicating time from 1-1-1958 to 31-12-2019 displayed as YYYY - only)
+##################################################################################################
+
+# creates my own xlables from 1958 to 2019
+xlabels <- c(rep(NA, nyears))
+xlabels[seq(from=1, to=length(xlabels), by = 1)] <- 1958:2019
+xlabels[seq(from=1, to=length(xlabels), by = 2)] <- NA
+
+# creates my own ylables arranging the station ID number by latitudes (-90,90)
+ylables1=ListStation[order(Lat,na.last =NA)]
+ylables2=sort(Lat,na.last =NA)
+
+#### To define my color pallettes  ####
+source_url("https://raw.githubusercontent.com/neocarto/R/master/colors/BuildColors.R")
+blues<-buildpal("#8ECEE9","#146594","#DCF0F8","#0B2130","#368ECA",20)
+greens<-buildpal("#ADD39D","#1B7D34","#E5F0DA","#142F1B","#3FA136",20)
+reds<-buildpal("#EFA5A9","#991915","#FBDEE1","#1D0809","#DE4243",20)
+purples<-buildpal("#FFB6F1","#87036E","#FFD9FA","#3F0036","#FF00C3",20)
+oranges<-buildpal("#FFB888","#AA4500","#FFE1CC","#3D1900","#FF6700",20)
+nicopal<-buildpal("#FCE37A","#FF0000","#FFEB97","#E50000","#FF6700",20)
+nicopal2<-buildpal("#B6EFB6","#080E5B","#B6EFB6","#080E5B","#518996",20)
+colors<-c(blues=list(blues),reds=list(reds),greens=list(greens),purples=list(purples),oranges=list(oranges),nicopal=list(nicopal),nicopal2=list(nicopal2))
+save(colors, file = "colors.RData")
+source_url("https://raw.githubusercontent.com/neocarto/R/master/colors/Palettes.R")
+load("colors.RData")
+mypal <- getpal("reds",12,"greens",12,middle=T,alphaeffect=T)
+
+####################################################
+### 10) Customizing and plotting different heatmaps by latitudes
+####################################################
+
+for (i in seq(from=1,to=228,by=38)){
+
+k=i+37
+print(k)
+
+png(filename = paste0(report_dir,"Heatmap_WOUDC_O3Data_1958-2019_Latitudes_between",ylables2[i],"_",ylables2[k],".png",sep=""),
+          res = 250,           # 250 pixels per inch
+          height = 2000,      # 2000 pixels
+          width = 2800        # 2800 pixels
+)
+
+par(mfrow=c(1,1))
+par(cex=1)
+par(mar = c(5,4,4,4) + 0.1)
+
+image.plot(seq(0.5,62.5,1),1:38,t(Ozone_matrix_Sum[i:k,]),
+                      col=colorRampPalette(c("#D5DBDB",mypal[14:25]))(12),
+                      breaks = c(0,1,2,3,4,5,6,7,8,9,10,11,12),axes=FALSE,
+                      xlab = "Years", ylab = "Stations ID Number", xlim=c(0.5,62.5),ylim=c(0,ncol(t(Ozone_matrix_Sum[i:k,]))+1), 
+                      cex.lab=1.5,cex.axis=1,cex=1.2,
+                      horizontal = TRUE, legend.shrink = 0.9, legend.width = 1, 
+                      main = "WOUDC OZONE (1958-2019) ",
+                      legend.lab = "Number of Monthly Data Available / Year", legend.line= 1.8,legend.cex=1.2, 
+                      midpoint = FALSE, border = NA
+)
+
+mtext("Latitudes", side = 4, line = 3,cex=1.3)
+axis(side=2, at= 1:ncol(t(Ozone_matrix_Sum[i:k,])),labels=ylables1[i:k], las=2, cex.axis = 0.7,font=2)
+axis(side=1, at= 1:nyears,labels=xlabels, las=2, cex.axis=0.8,font=2)
+axis(side=4, at= 1:ncol(t(Ozone_matrix_Sum[i:k,])),labels=ylables2[i:k], las=2, cex.axis = 0.7,font=2)
+abline(h=seq(from=0.5,to=ncol(t(Ozone_matrix_Sum[i:k,]))+0.5,by=1),lty=1,col="white",lwd=1)
+abline(v=seq(from=0.5,to=nyears+0.5,by=1),lty=1,col="white",lwd=1)
+box(col ="black",font=2,lwd=1)
+
+dev.off()
+
+}
+
+
+
+
+
